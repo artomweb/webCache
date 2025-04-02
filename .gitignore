@@ -1,0 +1,5 @@
+node_modules/
+nginxconfig.conf
+package-lock.json
+.env
+account.json
