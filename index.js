@@ -14,6 +14,29 @@ const processPushups = require("./processData/pushups.js");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const cors = require("cors");
+const { createClient } = require("redis ");
+
+let redis = null;
+const includeSolar = process.env.INCLUDE_SOLAR === "true";
+
+if (includeSolar) {
+  const { createClient } = require("redis");
+  redisClient = createClient({
+    url: process.env.REDIS_URL || "redis://localhost:6379",
+  });
+
+  redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+
+  redisClient
+    .connect()
+    .then(() => console.log("Connected to Redis"))
+    .catch((err) => console.error("Failed to connect to Redis:", err));
+}
+
+if (includeSolar) {
+  const Redis = require("ioredis");
+  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+}
 
 const isLocalhost = process.env.NODE_ENV === "development";
 if (isLocalhost) {
@@ -126,10 +149,23 @@ const dataConfigs = {
 };
 
 // Route handler
-app.get("/:cacheKey", (req, res) => {
+app.get("/:cacheKey", async (req, res) => {
   const cacheKey = req.params.cacheKey;
+
   if (cacheKey === "all") {
-    res.json(dataStore);
+    const result = { ...dataStore };
+
+    if (includeSolar && redisClient) {
+      try {
+        const solarRaw = await redisClient.get("latestData");
+        result.solar = solarRaw ? JSON.parse(solarRaw) : null;
+      } catch (err) {
+        console.error("Error fetching solar data from Redis:", err);
+        result.solar = { error: true, message: "Failed to fetch from Redis" };
+      }
+    }
+
+    res.json(result);
   } else if (cacheKey === "updated") {
     res.send(
       lastUpdateTime
