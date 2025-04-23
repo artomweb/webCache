@@ -14,7 +14,6 @@ const processPushups = require("./processData/pushups.js");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const cors = require("cors");
-const { createClient } = require("redis");
 
 let redis = null;
 const includeSolar = process.env.INCLUDE_SOLAR === "true";
@@ -31,11 +30,6 @@ if (includeSolar) {
     .connect()
     .then(() => console.log("Connected to Redis"))
     .catch((err) => console.error("Failed to connect to Redis:", err));
-}
-
-if (includeSolar) {
-  const Redis = require("ioredis");
-  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 }
 
 const isLocalhost = process.env.NODE_ENV === "development";
