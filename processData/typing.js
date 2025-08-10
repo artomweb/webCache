@@ -36,12 +36,11 @@ const updateTypingData = (dataIn) => {
 
   const timOfDayLabels = completedByTimeOfDay.map((item) => item.hour);
   const timOfDayData = completedByTimeOfDay.map((item) => item.avg);
-
   const pointRadiusArray = completedByTimeOfDay.map((item) =>
     item.avg !== 0 ? 3 : 0
   );
 
-  // Group data by month and year
+  // Group data by month/year for averages
   const weekAvg = _.chain(sortedData)
     .groupBy((d) => {
       const date = new Date(d.timestamp);
@@ -62,7 +61,28 @@ const updateTypingData = (dataIn) => {
   const labels = weekAvg.map((el) => el.wofy);
   const data = weekAvg.map((el) => el.avg);
 
-  // Get the maximum WPM
+  // NEW: Group data by month/year for max WPM
+  const monthlyMaxData = _.chain(sortedData)
+    .groupBy((d) => {
+      const date = new Date(d.timestamp);
+      return (
+        date.toLocaleString("default", { month: "short" }) +
+        " " +
+        date.getFullYear()
+      );
+    })
+    .map((entries, monthKey) => ({
+      dt: entries[0].timestamp,
+      month: monthKey,
+      max: _.maxBy(entries, "wpm").wpm,
+    }))
+    .sortBy("dt")
+    .value();
+
+  const monthlyLabels = monthlyMaxData.map((el) => el.month);
+  const monthlyMaxSpeeds = monthlyMaxData.map((el) => el.max);
+
+  // Get the maximum WPM overall
   const maxWPM = +_.maxBy(sortedData, "wpm").wpm + " wpm";
 
   // Only keep the last 500 data points
@@ -115,6 +135,8 @@ const updateTypingData = (dataIn) => {
     timOfDayLabels,
     timOfDayData,
     pointRadiusArray,
+    monthlyLabels, // NEW
+    monthlyMaxSpeeds, // NEW
     maxWPM,
     avgWPM,
     avgACC,
