@@ -18,13 +18,21 @@ function process5k(data) {
   // Number of runs
   const runCount = data.length;
 
+  // Last parkrun date in milliseconds
+  const lastRunDate = _.maxBy(
+    data.map((d) => new Date(d["Run Date"])),
+    (date) => date.getTime()
+  ).getTime();
+
   const result = {
     fastestTime: fastest.Time,
     bestPosition: bestPosition["Overall Position"],
     events: events,
     runCount: runCount,
+    lastRunDate: lastRunDate,
   };
 
+  console.log(result);
   return result;
 }
 
