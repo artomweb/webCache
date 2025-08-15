@@ -6,6 +6,12 @@ function process5k(data) {
     return minutes * 60 + seconds;
   };
 
+  // Parse dates in DD/MM/YYYY format
+  const parseDate = (dateStr) => {
+    const [day, month, year] = dateStr.split("/").map(Number);
+    return new Date(year, month - 1, day); // JS months are 0-indexed
+  };
+
   // Fastest time
   const fastest = _.minBy(data, (d) => timeToSeconds(d.Time));
 
@@ -18,11 +24,12 @@ function process5k(data) {
   // Number of runs
   const runCount = data.length;
 
-  // Last parkrun date in milliseconds
-  const lastRunDate = _.maxBy(
-    data.map((d) => new Date(d["Run Date"])),
-    (date) => date.getTime()
-  ).getTime();
+  // Parse all run dates
+  const runDates = data.map((d) => parseDate(d["Run Date"]));
+  console.log(runDates);
+
+  // Last run date
+  const lastRunDate = _.maxBy(runDates, (date) => date.getTime()).getTime();
 
   const result = {
     fastestTime: fastest.Time,
