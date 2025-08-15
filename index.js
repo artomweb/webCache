@@ -11,6 +11,7 @@ const processSpotify = require("./processData/spotify.js");
 const processTyping = require("./processData/typing.js");
 const processDuo = require("./processData/duo.js");
 const processPushups = require("./processData/pushups.js");
+const processParkrun = require("./processData/parkrun.js");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const cors = require("cors");
@@ -94,6 +95,11 @@ const dataConfigs = {
     spreadsheetId: process.env.K5_SPREADSHEET_ID,
     range: "Sheet1!A1:Z",
     processFunc: process5k,
+  },
+  parkrun: {
+    spreadsheetId: process.env.PARKRUN_SPREADSHEET_ID,
+    range: "Sheet1!A1:Z",
+    processFunc: processParkrun,
   },
   driving: {
     spreadsheetId: process.env.DRIVING_SPREADSHEET_ID,
