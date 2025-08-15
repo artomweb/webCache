@@ -15,13 +15,16 @@ function process5k(data) {
   // Unique list of event names
   const events = _.uniq(data.map((d) => d.Event));
 
+  // Number of runs
+  const runCount = data.length;
+
   const result = {
     fastestTime: fastest.Time,
     bestPosition: bestPosition["Overall Position"],
     events: events,
+    runCount: runCount,
   };
 
-  console.log(result);
   return result;
 }
 
