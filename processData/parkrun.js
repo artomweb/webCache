@@ -5,11 +5,15 @@ function process5k(data) {
     const [minutes, seconds] = timeStr.split(":").map(Number);
     return minutes * 60 + seconds;
   };
+
+  // Fastest time
   const fastest = _.minBy(data, (d) => timeToSeconds(d.Time));
 
   // Best overall position
   const bestPosition = _.minBy(data, "Overall Position");
-  const events = data.map((d) => d.Event);
+
+  // Unique list of event names
+  const events = _.uniq(data.map((d) => d.Event));
 
   const result = {
     fastestTime: fastest.Time,
