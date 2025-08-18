@@ -4,7 +4,7 @@ function process5k(data) {
   // Process dates and ensure numeric values
   const processedRuns = data.map((run) => {
     run.jsDate = new Date(run.StartDateEpoch * 1000); // Convert epoch to JS Date
-    run.MovingTime = Number(run.MovingTime); // Ensure numeric
+    run.BestEffort = Number(run.BestEffort);
     run.Distance = Number(run.Distance);
     return run;
   });
@@ -48,10 +48,10 @@ function process5k(data) {
   return {
     graphData: {
       labels: processedRuns.map((r) => r.jsDate),
-      data: processedRuns.map((r) => r.MovingTime), // Lower is better
+      data: processedRuns.map((r) => r.BestEffort),
     },
     numberOfRuns: processedRuns.length,
-    fastestRun: _.minBy(processedRuns, "MovingTime")?.MovingTime,
+    fastestRun: _.minBy(processedRuns, "BestEffort")?.BestEffort,
     averageSplit: splitsInfo.averageSplit,
     fastestSplit: splitsInfo.fastestSplit,
     lastRun: processedRuns[processedRuns.length - 1]?.jsDate.getTime(),
