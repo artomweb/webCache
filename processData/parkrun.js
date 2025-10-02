@@ -26,7 +26,7 @@ function process5k(data) {
 
   // Parse all run dates
   const runDates = data.map((d) => parseDate(d["Run Date"]));
-  console.log(runDates);
+  // console.log(runDates);
 
   // Last run date
   const lastRunDate = _.maxBy(runDates, (date) => date.getTime()).getTime();
@@ -39,7 +39,7 @@ function process5k(data) {
     lastRunDate: lastRunDate,
   };
 
-  console.log(result);
+  // console.log(result);
   return result;
 }
 

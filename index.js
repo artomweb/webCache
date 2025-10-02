@@ -16,22 +16,19 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const cors = require("cors");
 
-let redis = null;
 const includeSolar = process.env.INCLUDE_SOLAR === "true";
 
-if (includeSolar) {
-  const { createClient } = require("redis");
-  redisClient = createClient({
-    url: process.env.REDIS_URL || "redis://localhost:6379",
-  });
+const { createClient } = require("redis");
+const redisClient = createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+});
 
-  redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+redisClient.on("error", (err) => console.error("Redis Client Error:", err));
 
-  redisClient
-    .connect()
-    .then(() => console.log("Connected to Redis"))
-    .catch((err) => console.error("Failed to connect to Redis:", err));
-}
+redisClient
+  .connect()
+  .then(() => console.log("Connected to Redis"))
+  .catch((err) => console.error("Failed to connect to Redis:", err));
 
 const isLocalhost = process.env.NODE_ENV === "development";
 if (isLocalhost) {
@@ -56,12 +53,7 @@ function parseArrayToJson(data) {
         }
       }
 
-      if (
-        header !== "SplitsMetric" &&
-        typeof value === "string" &&
-        value !== "" &&
-        !isNaN(value)
-      ) {
+      if (header !== "SplitsMetric" && typeof value === "string" && value !== "" && !isNaN(value)) {
         value = Number(value);
       }
       if (header === "SplitsMetric" && value) {
@@ -167,11 +159,7 @@ app.get("/:cacheKey", async (req, res) => {
 
     res.json(result);
   } else if (cacheKey === "updated") {
-    res.send(
-      lastUpdateTime
-        ? `Last updated at: ${lastUpdateTime}`
-        : "Data has not been updated yet"
-    );
+    res.send(lastUpdateTime ? `Last updated at: ${lastUpdateTime}` : "Data has not been updated yet");
   } else {
     const data = dataStore[cacheKey];
     if (data) {
@@ -182,43 +170,67 @@ app.get("/:cacheKey", async (req, res) => {
   }
 });
 
-// Fetch and process each data set
+async function loadCache() {
+  if (!redisClient) return;
+
+  try {
+    const raw = await redisClient.get("dataStore");
+    const time = await redisClient.get("lastUpdateTime");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      Object.assign(dataStore, parsed);
+      lastUpdateTime = time || null;
+      console.log("Cache loaded from Redis");
+    }
+  } catch (e) {
+    console.error("Error loading cache from Redis:", e);
+  }
+}
+
+async function saveCache() {
+  if (!redisClient) return;
+
+  try {
+    await redisClient.set("dataStore", JSON.stringify(dataStore));
+    await redisClient.set("lastUpdateTime", lastUpdateTime || "");
+    console.log("Cache saved to Redis");
+  } catch (e) {
+    console.error("Error saving cache to Redis:", e);
+  }
+}
+
+async function fetchSingleDataset(key, config) {
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: config.spreadsheetId,
+      range: config.range,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length === 0) throw new Error("No data found");
+
+    const jsonData = parseArrayToJson(rows);
+    const processedData = config.processFunc(jsonData);
+    if (!processedData) throw new Error("Processing returned null");
+
+    dataStore[key] = { data: processedData, error: false };
+    lastUpdateTime = new Date().toISOString();
+    await saveCache();
+    console.log(`Data for ${key} updated successfully.`);
+  } catch (error) {
+    console.error(`Error fetching ${key}: ${error.message}. Retrying in 30m...`);
+    // Don't overwrite valid cache
+    if (!dataStore[key] || dataStore[key].error) {
+      dataStore[key] = { data: null, error: true };
+    }
+    setTimeout(() => fetchSingleDataset(key, config), 30 * 60 * 1000);
+  }
+}
+
 async function fetchDataAndStore() {
   for (const [key, config] of Object.entries(dataConfigs)) {
-    try {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: config.spreadsheetId,
-        range: config.range,
-      });
-
-      const rows = response.data.values;
-      if (!rows || rows.length === 0) {
-        throw new Error("No data found");
-      }
-
-      const jsonData = parseArrayToJson(rows);
-      const processedData = config.processFunc(jsonData);
-
-      if (!processedData) {
-        throw new Error("No data found");
-      }
-
-      dataStore[key] = {
-        data: processedData,
-        error: false,
-      };
-      console.log(`Data for ${key} updated successfully.`);
-    } catch (error) {
-      console.error(`Error fetching or processing data for ${key}:`, error);
-      dataStore[key] = {
-        data: null,
-        error: true,
-      };
-    }
+    fetchSingleDataset(key, config);
   }
-
-  lastUpdateTime = new Date().toISOString();
-  console.log(`Data updated at ${lastUpdateTime}`);
 }
 
 // Test function
@@ -263,7 +275,10 @@ if (testFlag === "--test" && testKey) {
       process.exit(1);
     });
 } else {
-  fetchDataAndStore();
-  setInterval(fetchDataAndStore, 10 * 60 * 60 * 1000);
-  app.listen(2036, () => console.log("App Listening on port 2036"));
+  (async () => {
+    await loadCache(); // Load last good data from Redis
+    fetchDataAndStore(); // Start fetching
+    setInterval(fetchDataAndStore, 10 * 60 * 60 * 1000); // Regular refresh
+    app.listen(2036, () => console.log("App Listening on port 2036"));
+  })();
 }

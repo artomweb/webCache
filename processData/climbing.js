@@ -1,9 +1,4 @@
-const {
-  gradeRanking,
-  parseDate,
-  formatDate,
-  timeago,
-} = require("./helpers.js");
+const { gradeRanking, parseDate, formatDate, timeago } = require("./helpers.js");
 
 const _ = require("lodash");
 
@@ -11,7 +6,7 @@ const processClimbingData = (data) => {
   // Map and process data
   data = data.map((d) => {
     d.Grade = d.Grade.split("+")[0];
-    d.numericGrade = gradeRanking[d.Grade];
+    d.numericGrade = gradeRanking[d.Grade] || 0;
     d.DateJS = parseDate(d.Date);
     return d;
   });
@@ -23,10 +18,7 @@ const processClimbingData = (data) => {
 
   // Calculate routes metrics
   const routes = _.mapValues(groupedByDay, (climbs) => {
-    const flashes = _.filter(
-      climbs,
-      (climb) => climb.Success === true && climb.Attempts === 1
-    );
+    const flashes = _.filter(climbs, (climb) => climb.Success === true && climb.Attempts === 1);
     const successes = _.filter(climbs, (climb) => climb.Success === true);
     const attempts = _.sumBy(climbs, (climb) => +climb.Attempts);
     const bestGrade = _.maxBy(climbs, "numericGrade").Grade;
@@ -90,22 +82,12 @@ const processClimbingData = (data) => {
     });
   });
 
-  const sortedGrades = Object.fromEntries(
-    Object.entries(gradeTotals).sort(
-      ([, a], [, b]) => a.numericGrade - b.numericGrade
-    )
-  );
+  const sortedGrades = Object.fromEntries(Object.entries(gradeTotals).sort(([, a], [, b]) => a.numericGrade - b.numericGrade));
 
   const byGradeLabels = _.keys(sortedGrades);
-  const byGradeAttempts = Object.values(sortedGrades).map(
-    (route) => route.attempts
-  );
-  const byGradeSuccesses = Object.values(sortedGrades).map(
-    (route) => route.successes
-  );
-  const byGradeFlashes = Object.values(sortedGrades).map(
-    (route) => route.flashes
-  );
+  const byGradeAttempts = Object.values(sortedGrades).map((route) => route.attempts);
+  const byGradeSuccesses = Object.values(sortedGrades).map((route) => route.successes);
+  const byGradeFlashes = Object.values(sortedGrades).map((route) => route.flashes);
 
   return {
     highestGrade,
