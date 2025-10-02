@@ -12,6 +12,8 @@ const processTyping = require("./processData/typing.js");
 const processDuo = require("./processData/duo.js");
 const processPushups = require("./processData/pushups.js");
 const processParkrun = require("./processData/parkrun.js");
+const processPullups = require("./processData/pullups.js");
+
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 const cors = require("cors");
@@ -83,6 +85,11 @@ const sheets = google.sheets({ version: "v4", auth });
 
 // Combined configuration object
 const dataConfigs = {
+  pullups: {
+    spreadsheetId: process.env.PULLUPS_SPREADSHEET_ID,
+    range: "Sheet1!A1:Z",
+    processFunc: processPullups,
+  },
   k5: {
     spreadsheetId: process.env.K5_SPREADSHEET_ID,
     range: "Sheet1!A1:Z",
