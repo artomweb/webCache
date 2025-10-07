@@ -156,11 +156,17 @@ app.get("/:cacheKey", async (req, res) => {
 
     if (includeSolar && redisClient) {
       try {
+        // Fetch solar data (from VE.Direct logger)
         const solarRaw = await redisClient.get("latestData");
         result.solar = solarRaw ? JSON.parse(solarRaw) : null;
+
+        // Fetch server stats (Arduino + CPU)
+        const statsRaw = await redisClient.get("server_stats");
+        result.serverStats = statsRaw ? JSON.parse(statsRaw) : null;
       } catch (err) {
-        console.error("Error fetching solar data from Redis:", err);
-        result.solar = { error: true, message: "Failed to fetch from Redis" };
+        console.error("Error fetching Redis data:", err);
+        result.solar = { error: true, message: "Failed to fetch solar data" };
+        result.serverStats = { error: true, message: "Failed to fetch server stats" };
       }
     }
 
