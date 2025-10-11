@@ -55,7 +55,12 @@ function parseArrayToJson(data) {
         }
       }
 
-      if (header !== "SplitsMetric" && typeof value === "string" && value !== "" && !isNaN(value)) {
+      if (
+        header !== "SplitsMetric" &&
+        typeof value === "string" &&
+        value !== "" &&
+        !isNaN(value)
+      ) {
         value = Number(value);
       }
       if (header === "SplitsMetric" && value) {
@@ -157,8 +162,16 @@ app.get("/:cacheKey", async (req, res) => {
     if (includeSolar && redisClient) {
       try {
         // Fetch solar data (from VE.Direct logger)
-        const solarRaw = await redisClient.get("latestData");
-        result.solar = solarRaw ? JSON.parse(solarRaw) : null;
+        const solarRaw = await redisClient.get("vedirect:latest");
+        const solarData = solarRaw ? JSON.parse(solarRaw) : null;
+
+        result.solar = solarData
+          ? {
+              V: solarData.V,
+              I: solarData.I,
+              PPV: solarData.PPV,
+            }
+          : null;
 
         // Fetch server stats (Arduino + CPU)
         const statsRaw = await redisClient.get("server_stats");
@@ -166,13 +179,20 @@ app.get("/:cacheKey", async (req, res) => {
       } catch (err) {
         console.error("Error fetching Redis data:", err);
         result.solar = { error: true, message: "Failed to fetch solar data" };
-        result.serverStats = { error: true, message: "Failed to fetch server stats" };
+        result.serverStats = {
+          error: true,
+          message: "Failed to fetch server stats",
+        };
       }
     }
 
     res.json(result);
   } else if (cacheKey === "updated") {
-    res.send(lastUpdateTime ? `Last updated at: ${lastUpdateTime}` : "Data has not been updated yet");
+    res.send(
+      lastUpdateTime
+        ? `Last updated at: ${lastUpdateTime}`
+        : "Data has not been updated yet"
+    );
   } else {
     const data = dataStore[cacheKey];
     if (data) {
@@ -231,7 +251,9 @@ async function fetchSingleDataset(key, config) {
     await saveCache();
     console.log(`Data for ${key} updated successfully.`);
   } catch (error) {
-    console.error(`Error fetching ${key}: ${error.message}. Retrying in 30m...`);
+    console.error(
+      `Error fetching ${key}: ${error.message}. Retrying in 30m...`
+    );
     // Don't overwrite valid cache
     if (!dataStore[key] || dataStore[key].error) {
       dataStore[key] = { data: null, error: true };
