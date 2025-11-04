@@ -1,6 +1,12 @@
 const express = require("express");
 const app = express();
 const { google } = require("googleapis");
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+const cors = require("cors");
+const { createClient } = require("redis");
+
+// Import processing modules
 const process5k = require("./processData/5k.js");
 const processClimbing = require("./processData/climbing.js");
 const processCOD = require("./processData/cod.js");
@@ -14,13 +20,9 @@ const processPushups = require("./processData/pushups.js");
 const processParkrun = require("./processData/parkrun.js");
 const processPullups = require("./processData/pullups.js");
 
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, ".env") });
-const cors = require("cors");
-
 const includeSolar = process.env.INCLUDE_SOLAR === "true";
 
-const { createClient } = require("redis");
+// Redis client
 const redisClient = createClient({
   url: process.env.REDIS_URL || "redis://localhost:6379",
 });
@@ -32,29 +34,27 @@ redisClient
   .then(() => console.log("Connected to Redis"))
   .catch((err) => console.error("Failed to connect to Redis:", err));
 
-const isLocalhost = process.env.NODE_ENV === "development";
-if (isLocalhost) {
+// Enable CORS in development
+if (process.env.NODE_ENV === "development") {
   app.use(cors());
   console.log("CORS enabled for localhost");
 }
 
+// In-memory cache
 const dataStore = {};
 let lastUpdateTime = null;
 
+// Convert Google Sheets array to JSON
 function parseArrayToJson(data) {
   const headers = data[0];
-  const jsonData = data.slice(1).map((row) => {
+  return data.slice(1).map((row) => {
     const obj = {};
     headers.forEach((header, index) => {
       let value = row[index] || "";
       if (typeof value === "string") {
-        if (value.toUpperCase() === "TRUE") {
-          value = true;
-        } else if (value.toUpperCase() === "FALSE") {
-          value = false;
-        }
+        if (value.toUpperCase() === "TRUE") value = true;
+        else if (value.toUpperCase() === "FALSE") value = false;
       }
-
       if (
         header !== "SplitsMetric" &&
         typeof value === "string" &&
@@ -72,15 +72,13 @@ function parseArrayToJson(data) {
       }
       obj[header] = value;
     });
-    if (obj.StartDateEpoch) {
+    if (obj.StartDateEpoch)
       obj.jsDate = new Date(obj.StartDateEpoch * 1000).toISOString();
-    }
     return obj;
   });
-  return jsonData;
 }
 
-// Configure Google Sheets API client
+// Google Sheets client
 const auth = new google.auth.GoogleAuth({
   keyFile: path.join(__dirname, "./account.json"),
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -88,7 +86,7 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
-// Combined configuration object
+// Dataset configuration
 const dataConfigs = {
   pullups: {
     spreadsheetId: process.env.PULLUPS_SPREADSHEET_ID,
@@ -152,7 +150,7 @@ const dataConfigs = {
   },
 };
 
-// Route handler
+// Express routes
 app.get("/:cacheKey", async (req, res) => {
   const cacheKey = req.params.cacheKey;
 
@@ -161,19 +159,12 @@ app.get("/:cacheKey", async (req, res) => {
 
     if (includeSolar && redisClient) {
       try {
-        // Fetch solar data (from VE.Direct logger)
         const solarRaw = await redisClient.get("vedirect:latest");
         const solarData = solarRaw ? JSON.parse(solarRaw) : null;
-
         result.solar = solarData
-          ? {
-              V: solarData.V,
-              I: solarData.I,
-              PPV: solarData.PPV,
-            }
+          ? { V: solarData.V, I: solarData.I, PPV: solarData.PPV }
           : null;
 
-        // Fetch server stats (Arduino + CPU)
         const statsRaw = await redisClient.get("server_stats");
         result.serverStats = statsRaw ? JSON.parse(statsRaw) : null;
       } catch (err) {
@@ -195,23 +186,17 @@ app.get("/:cacheKey", async (req, res) => {
     );
   } else {
     const data = dataStore[cacheKey];
-    if (data) {
-      res.json(data);
-    } else {
-      res.status(404).send("Data not found");
-    }
+    data ? res.json(data) : res.status(404).send("Data not found");
   }
 });
 
+// Load cache from Redis
 async function loadCache() {
-  if (!redisClient) return;
-
   try {
     const raw = await redisClient.get("dataStore");
     const time = await redisClient.get("lastUpdateTime");
     if (raw) {
-      const parsed = JSON.parse(raw);
-      Object.assign(dataStore, parsed);
+      Object.assign(dataStore, JSON.parse(raw));
       lastUpdateTime = time || null;
       console.log("Cache loaded from Redis");
     }
@@ -220,9 +205,8 @@ async function loadCache() {
   }
 }
 
+// Save cache to Redis
 async function saveCache() {
-  if (!redisClient) return;
-
   try {
     await redisClient.set("dataStore", JSON.stringify(dataStore));
     await redisClient.set("lastUpdateTime", lastUpdateTime || "");
@@ -232,88 +216,44 @@ async function saveCache() {
   }
 }
 
+// Fetch a single dataset
 async function fetchSingleDataset(key, config) {
   try {
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: config.spreadsheetId,
       range: config.range,
     });
-
     const rows = response.data.values;
     if (!rows || rows.length === 0) throw new Error("No data found");
 
     const jsonData = parseArrayToJson(rows);
     const processedData = config.processFunc(jsonData);
-    if (!processedData) throw new Error("Processing returned null");
 
     dataStore[key] = { data: processedData, error: false };
     lastUpdateTime = new Date().toISOString();
-    await saveCache();
-    console.log(`Data for ${key} updated successfully.`);
+
+    // Clean temporary objects
+    processedData = null;
   } catch (error) {
-    console.error(
-      `Error fetching ${key}: ${error.message}. Retrying in 30m...`
-    );
-    // Don't overwrite valid cache
-    if (!dataStore[key] || dataStore[key].error) {
+    console.error(`Error fetching ${key}: ${error.message}`);
+    if (!dataStore[key] || dataStore[key].error)
       dataStore[key] = { data: null, error: true };
-    }
-    setTimeout(() => fetchSingleDataset(key, config), 30 * 60 * 1000);
   }
 }
 
+// Fetch all datasets and save cache
 async function fetchDataAndStore() {
-  for (const [key, config] of Object.entries(dataConfigs)) {
-    fetchSingleDataset(key, config);
-  }
+  const promises = Object.entries(dataConfigs).map(([key, config]) =>
+    fetchSingleDataset(key, config)
+  );
+  await Promise.all(promises);
+  await saveCache();
 }
 
-// Test function
-async function testFunction(key) {
-  const config = dataConfigs[key];
-  if (!config) {
-    console.error(`No config found for key: ${key}`);
-    console.log("Available keys:", Object.keys(dataConfigs).join(", "));
-    return;
-  }
-
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: config.spreadsheetId,
-      range: config.range,
-    });
-
-    const rows = response.data.values;
-    const jsonData = parseArrayToJson(rows);
-    console.log(rows);
-    console.log(jsonData);
-    const result = await config.processFunc(jsonData);
-    console.log(`${key} Processing Result:`);
-    console.log(result);
-  } catch (error) {
-    console.error(`Error testing ${key}:`, error);
-  }
-}
-
-// Startup logic
-const testFlag = process.argv[2];
-const testKey = process.argv[3];
-if (testFlag === "--test" && testKey) {
-  console.log("TESTING", testKey);
-  testFunction(testKey)
-    .then(() => {
-      console.log("Test complete");
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error("Test failed:", err);
-      process.exit(1);
-    });
-} else {
-  (async () => {
-    await loadCache(); // Load last good data from Redis
-    fetchDataAndStore(); // Start fetching
-    setInterval(fetchDataAndStore, 10 * 60 * 60 * 1000); // Regular refresh
-    app.listen(2036, () => console.log("App Listening on port 2036"));
-  })();
-}
+// Startup
+(async () => {
+  await loadCache(); // Load last good data
+  fetchDataAndStore(); // Initial fetch
+  setInterval(fetchDataAndStore, 30 * 60 * 1000); // Fetch every 30 minutes
+  app.listen(2036, () => console.log("App listening on port 2036"));
+})();
